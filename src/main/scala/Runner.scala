@@ -1,13 +1,15 @@
-package c
+package async
 
 import java.util.concurrent.Executors
 import java.{util => ju}
+import scala.util.Success
+import scala.util.Failure
 
 object Runner extends App {
 
   def computation(): Int = {
-    val result = (1 to 10000).foldLeft(0){(acc, cur) =>
-      if(cur % 2000 == 0){
+    val result = (1 to 10000).foldLeft(0) { (acc, cur) =>
+      if (cur % 2000 == 0) {
         println(cur)
       }
       acc + cur
@@ -15,9 +17,28 @@ object Runner extends App {
 
     //Thread.sleep(2000)
     println("Main computation finished")
-   result
+    result
   }
 
+  implicit val exec = ThreadPools.fixCount(10)
+  val f = exec.apply(computation)
+  val f2 = f.map(_.toString)
+
+
+  def getId(cell: String) : Async[String] = ???
+
+  def getNameById(id: String): Async[String] = ???
+
+  val cell = "0912111111"
+
+  val asyncId = getId(cell)
+  val asyncName = asyncId.flatMap(getNameById)
+
+  asyncName.onComplete{
+    case Success(value) => println("Hoooooooooora")
+    case Failure(e) => println(e)
+  }
+  /*
   implicit val th = new ThreadPool()
   val myFuture = th.submit(computation)
 
@@ -35,61 +56,7 @@ object Runner extends App {
     second <- b(first)
     third <- c(second)
   } yield third
+   */
+
 
 }
-
-import scala.concurrent.ExecutionContext.Implicits.global
-
-class ThreadPool {
-  private val th = Executors.newFixedThreadPool(10)
-
-  def submit[T](f: () => T) : Fu[T] = {
-    val future = new Fu[T]()
-    val runnable = new MyRunnable(f, future)
-    th.execute(runnable)
-    future
-  }
-
-}
-
-private class MyRunnable[T](f: () => T, future: Fu[T]) extends Runnable {
-  override def run(): Unit = {
-    val tempResult = f()
-    future.complete(tempResult)
-  }
-}
-
-class Fu[T] {
-  type Listener = T => Unit
-  private val listeners = new scala.collection.mutable.ListBuffer[Listener]()
-
-  var result : Option[T] = None
-
-  def complete(t: T): Unit = {
-    listeners.foreach(l => l(t))
-    result = Some(t)
-  }
-
-  def addOnCompleteListener(listener: Listener): Unit = {
-    listeners += listener
-  }
-
-  def map[U](f: T => U)(implicit th: ThreadPool): Fu[U] = {
-    result match {
-      case Some(value) =>
-        th.submit(() => f(value))
-      case _ =>
-        val newFuture = new Fu[U]()
-        val listener: Listener = t => {
-        val u = f(t)
-        newFuture.complete(u)
-        }
-        addOnCompleteListener(listener)
-        newFuture
-    }
-  }
-
-  def flatMap[U](f: T => Fu[U]): Fu[U] = ???
-
-}
-
